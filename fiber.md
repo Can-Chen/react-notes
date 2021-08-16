@@ -42,6 +42,7 @@ ReactDOM.render()：ReactDOM.render() 会控制你传入容器节点里的内�
   - 负责将变化的组件渲染到页面上
 
 ##### Scheduler（调度器）
+
 以浏览器剩余时间作为任务中断的标准，需要一种机制，当浏览器有剩余时间时通知我们。虽然浏览器提供了这个API requestIdLeCallback。但是因为该API还存在：<br>
 1、浏览器兼容性 <br>
 2、触发频率不稳定的因素<br>
@@ -57,10 +58,9 @@ Renderer根据Reconciler为虚拟DOM打的标记，同步执行对应的DOM操�
 由于Scheduler和Reconciler的工作都是在内存中进行，不会更新页面上的DOM，所以即使反复中断，用户也不会看见更新的DOM。
 
 ### Fiber架构的[心智模型](https://overreacted.io/zh-hans/how-are-function-components-different-from-classes/)
-
 ---
-
 #### [什么是代数效应](https://overreacted.io/zh-hans/algebraic-effects-for-the-rest-of-us/)
+
 代数效应是函数时编程中的一个概念，用于将副作用从函数调用中分离。
 >函数的副作用：调用函数时，除了函数返回值外，还对主调用函数产生附加的影响。（例如修改全局变量（函数外的变量）、http请求、数据库的操作等等）
 
@@ -90,7 +90,7 @@ React内部实现的一套状态更新机制。支持任务不同优先级，可
 ......
 let workInProgress = current.alternate;
   if (workInProgress === null) {
-    // react使用双缓存技术。因为一棵树最多只需要两个版本
+    // react使用双缓存技术。一棵树最多只需要两个版本
     workInProgress = createFiber(
       current.tag,
       pendingProps,
