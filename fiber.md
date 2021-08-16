@@ -19,7 +19,7 @@ Reconciler 没有单独的包，因为他们暂时没有公共 API。相反，�
 >React 最初只是服务于 DOM，但是这之后被改编成也能同时支持原生平台的 React Native。因此，在 React 内部机制中引入了“渲染器”这个概念。<br>
 渲染器用于管理一棵 React 树，使其根据底层平台进行不同的调用。
 
-在React中继承于**Component**或**PureComponent**组件可以通过 ```this.setState ```、```this.forceUpdate```、```ReactDOM.render```等API触发更新.
+在React中可以通过 ```this.setState ```、```this.forceUpdate```、```ReactDOM.render```等API触发更新.
 
 >this.forceUpdate：默认情况下，当组件的 state 或 props 发生变化时，组件将重新渲染。如果 render() 方法依赖于其他数据，则可以调用 forceUpdate() 强制让组件重新渲染。调用 forceUpdate() 将致使组件调用 render() 方法，此操作会跳过该组件的 shouldComponentUpdate()。但其子组件会触发正常的生命周期方法，包括 shouldComponentUpdate() 方法。如果标记发生变化，React 仍将只更新 DOM。<br><br>
 ReactDOM.render()：ReactDOM.render() 会控制你传入容器节点里的内容。当首次调用时，容器节点里的所有 DOM 元素都会被替换，后续的调用则会使用 React 的 DOM 差分算法（DOM diffing algorithm）进行高效的更新。ReactDOM.render() 不会修改容器节点（只会修改容器的子节点）。可以在不覆盖现有子节点的情况下，将组件插入已有的 DOM 节点中。
@@ -42,10 +42,10 @@ ReactDOM.render()：ReactDOM.render() 会控制你传入容器节点里的内�
   - 负责将变化的组件渲染到页面上
 
 ##### Scheduler（调度器）
-以浏览器剩余时间作为任务中断的标准，需要一种机制，当浏览器有剩余时间时通知我们。虽然浏览器提供了这个API requestIdIeCallback。但是因为该API还存在：<br>
+以浏览器剩余时间作为任务中断的标准，需要一种机制，当浏览器有剩余时间时通知我们。虽然浏览器提供了这个API requestIdLeCallback。但是因为该API还存在：<br>
 1、浏览器兼容性 <br>
 2、触发频率不稳定的因素<br>
-React的团队实现了功能更加完备的requestIdIeCallback polyfill，这就是Scheduler。
+React的团队实现了功能更加完备的requestIdLeCallback polyfill，这就是Scheduler。
 
 ##### Reconciler（协调器）
 React15中的版本是递归处理虚拟DOM的，在React16中的Reconciler更新工作从递归变成了可以中断的循环过程。每次循环的过程中都会调用shouldYield判断当前循环是否有剩余时间。在React16中，Reconciler与Renderer不再是交替工作。当Scheduler将任务交给Reconciler后，Reconciler会为变化的虚拟DOM打上代表增、删、更新的标记。整个Scheduler与Reconciler的工作都在内存中进行。只有当所有组件都完成Reconciler的工作，才会统一交给Renderer。
@@ -56,11 +56,11 @@ Renderer根据Reconciler为虚拟DOM打的标记，同步执行对应的DOM操�
 2、当前帧没有剩余时间<br>
 由于Scheduler和Reconciler的工作都是在内存中进行，不会更新页面上的DOM，所以即使反复中断，用户也不会看见更新的DOM。
 
-### Fiber架构的心智模型
+### Fiber架构的[心智模型](https://overreacted.io/zh-hans/how-are-function-components-different-from-classes/)
 
 ---
 
-#### 什么是代数效应
+#### [什么是代数效应](https://overreacted.io/zh-hans/algebraic-effects-for-the-rest-of-us/)
 代数效应是函数时编程中的一个概念，用于将副作用从函数调用中分离。
 >函数的副作用：调用函数时，除了函数返回值外，还对主调用函数产生附加的影响。（例如修改全局变量（函数外的变量）、http请求、数据库的操作等等）
 
@@ -69,7 +69,7 @@ Renderer根据Reconciler为虚拟DOM打的标记，同步执行对应的DOM操�
 
 #### 代数效应与Generator
 从React15到React16，协调器（Reconciler）重构的一大目的：将老的同步更新的架构变为***异步可中断更新***。异步可中断更新可以理解为：更新在执行过程中可能会被打断（浏览器时间分片用尽或有更高优先级任务插队），当可以继续执行时恢复之前执行的中间状态。这就是代数效应中try...handle的作用。<br><br>
-浏览器中原生支持类似的实现Generator。但是Generator的一些缺陷使React团队放弃了它：<br>
+浏览器中原生支持类似的实现Generator。[但是Generator的一些缺陷使React团队放弃了它](https://github.com/facebook/react/issues/7942)：<br>
 >1、类似async，Generator也是传染性的，使用了Generator则上下文的其他函数也需要做出改变。这样心智负担比较重。<br>
 2、Generator执行的中间状态是上下文关联的。<br><br>
 每当浏览器有空余时间时都会依次执行其中一个doExpensiveWork，当时间用尽则会中断，当再次恢复时会从中断位置继续执行。只考虑“单一优先级任务的中断与继续”情况下Generator可以很好的实现异步可中断更新，但是考虑到“高优先级任务插队”的情况，如果此时已经完成doExpensiveWorkA与doExpensiveWorkB计算出x与y。此时B组件接收到一个高优先级，由于Generator执行的中间状态是上下文关联的，所以计算y时无法复用之前已经计算出的x，需要重新计算。如果通过全局变量的保存之前的中间状态，又会引入新的复杂度。基于以上种种原因，React没有采用Generator实现协调器。
@@ -85,14 +85,53 @@ React内部实现的一套状态更新机制。支持任务不同优先级，可
 - 作为动态的工作单元，每个Fiber节点保存了本次更新该组件改变的状态、要执行的工作（需要被删除/被插入到页面中/被更新）
 
 在React中最多会同时存在两颗Fiber树。当前在屏幕上显示内容对应的Fiber树称为current Fiber树，正在内存中构建的Fiber树称为workProgress Fiber树。current Fiber树中的Fiber节点被称为current fiber，workInProgress Fiber树中的Fiber节点称为workInProgress fiber，通过alternate属性连接。
+```js
+// v17.0.2  ReactFiber.old.js -> 256
+......
+let workInProgress = current.alternate;
+  if (workInProgress === null) {
+    // react使用双缓存技术。因为一棵树最多只需要两个版本
+    workInProgress = createFiber(
+      current.tag,
+      pendingProps,
+      current.key,
+      current.mode,
+    );
+    workInProgress.elementType = current.elementType;
+    workInProgress.type = current.type;
+    workInProgress.stateNode = current.stateNode;
+
+    if (__DEV__) {
+      // DEV-only fields
+      workInProgress._debugID = current._debugID;
+      workInProgress._debugSource = current._debugSource;
+      workInProgress._debugOwner = current._debugOwner;
+      workInProgress._debugHookTypes = current._debugHookTypes;
+    }
+
+    workInProgress.alternate = current;
+    current.alternate = workInProgress;
+    ......
+```
 React应用根节点通过使current指针在不同Fiber树的rootFiber间切换来完成current Fiber树指向的切换。即当workInProgress Fiber树结构建完成交给Renderer渲染在页面上后，应用根节点的current指针指向workInProgress Fiber树，此时workInProgress Fiber树就变为current Fiber树。每次状态更新都会产生新的workInProgress Fiber树，通过current与workInPorgress的替换，完成DOM更新。
 
+```jsx
+export default function App(){
+  const [num, setCount] = useState(0);
+  return <div>
+    <header>
+      <img ... />
+      <p onClick={() => setCount(num => num  + 1)} ></p>
+    </header>
+  </div>
+}
+```
 #### mount时
 1、首次执行ReactDOM.render会创建fiberRootNode（源码中叫fiberRoot）和rootFiber。其中fiberRootNode是整个应用的根节点，rootFiber是<App />所在组件树的根节点。在React应用中可以多次调用ReactDOM.render渲染不同的组件树，他们会拥有不同的rootFiber。但是整个应用的根节点只有一个，那就是fiberRootNode。fiberRootNode的current会指向当前页面上已渲染内容对应Fiber树，即current Fiber树。
 
 >由于是首屏渲染，页面中还没有挂载任何DOM，所以fiberRootNode.current指向的rootFiber没有任何子Fiber节点（即current Fiber树为空）。
 
-2、接下来进入render阶段，根据组件返回的JSX在内存中依次创建Fiber节点并连接在一起构建Fiber树，被称为workInProgress Fiber树。（下图右侧为内存中构建的树，左侧为页面显示的树）
+2、接下来进入render阶段，根据组件返回的JSX在内存中依次创建Fiber节点并连接在一起构建Fiber树，被称为workInProgress Fiber树。
 在构建workInProgress Fiber树时会尝试复用current Fiber树中已有的Fiber节点内的属性，在首屏渲染时只有rootFiber存在对应的current fiber（即rootFiber.alternate）
 图中右侧已构建完的workInProgress Fiber树在commit阶段渲染到页面。此时DOM更新为右侧树对应的样子。fiberRootNode的current指针指向workInProgress Fiber树使其变为current Fiber树。
 
