@@ -9,10 +9,10 @@
 ### MemoryRouter
 -----
 
-### Prompt
+### [Prompt](https://github.com/Can-Chen/react-notes/blob/main/React-Router/Component/Prompt.md)
 -----
 
-### Redirect
+### [Redirect](https://github.com/Can-Chen/react-notes/blob/main/React-Router/Component/Redirect.md)
 -----
 
 ### Route
