@@ -1,4 +1,4 @@
-# React简介（一）
+<!-- # React简介（一）
 
 ### React的架构
 
@@ -138,4 +138,4 @@ export default function App(){
 #### update时
 接下来我们点击p节点触发状态改变，这会开启一次新的render阶段并构建一颗新的workInProgress Fiber树。
 和mount时一样，workInProgress fiber的创建可以复用current Fiber树对应的节点数据。
-workInProgress Fiber树在render阶段完成构建后进入commit阶段渲染到页面上。渲染完毕后，workInProgress Fiber树变为current Fiber树。
+workInProgress Fiber树在render阶段完成构建后进入commit阶段渲染到页面上。渲染完毕后，workInProgress Fiber树变为current Fiber树。 -->
