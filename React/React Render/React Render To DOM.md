@@ -220,6 +220,16 @@ function legacyRenderSubtreeIntoContainer(
 }
 ```
 
+关于root的定义
+```js
+export type RootType = {
+  render(children: ReactNodeList): void,
+  unmount(): void,
+  _internalRoot: FiberRoot,
+  ...
+};
+```
+
 但是在legacyRenderSubtreeIntoContainer方法中就会对这次执行进行判断。首次进入到该方法中时，因为在react的容器container中还未初始化react应用的环境，所以`container._reactRootContainer`返回的root字段为undefined，需要对root进行初始化，创建ReactDOMRoot对象，初始化react应用环境。从以下代码可以看出首次加载和更新都有调用`updateContainer`方法，该方法是在首次加载时不需要进行批量更新。
 
 ```js
@@ -241,7 +251,7 @@ export function unbatchedUpdates<A, R>(fn: (a: A) => R, a: A): R {
   }
 }
 ```
-在上图中标注框框的调用栈中可以看出，调用更新的入口是`updateContainer`函数.先删除一些无关的代码
+在上图中标注框框的调用栈中可以看出，调用更新的入口是`updateContainer`函数.先删除一些无关的代码。初次渲染传入的参数`element`React的节点数据、`container`fiberRoot、`parentaComponent`为null、`callback`
 
 ```js
 function updateContainer(
@@ -251,19 +261,20 @@ function updateContainer(
   callback: ?Function,
 ): Lane {
 
-  // current指向的是RootFiber（Fiber树的跟节点）
+  // current类型为Fiber，指向的是RootFiber（Fiber树的跟节点）
   const current = container.current;
-  // 1. 获取当前时间戳, 计算本次更新的优先级
+  // 获取当前时间戳, 计算本次更新的优先级
   const eventTime = requestEventTime();
-  // 2. 创建一个优先级变量(车道模型)
+  // 创建一个优先级变量(车道模型)
   const lane = requestUpdateLane(current);
 
-  // 3. 根据车道优先级, 创建update对象, 并加入fiber.updateQueue.pending队列
+  // 根据车道优先级, 创建update对象, 并加入fiber.updateQueue.pending队列
   const update = createUpdate(eventTime, lane);
   // Caution: React DevTools currently depends on this property
   // being called "element".
   update.payload = {element};
 
+  // 将新建的一个update对象加入的更新队列中（链表结构）
   enqueueUpdate(current, update);
 
   // 4. 进入reconciler运作流程中的`输入`环节
