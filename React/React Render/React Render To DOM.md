@@ -42,7 +42,7 @@ React.createElement(
   )
 )
 ```
-createElement做了什么工作？
+createElement做了什么工作？ 省略部分代码
 ```js
 export function createElement(type, config, children) {
   let propName;
@@ -57,25 +57,16 @@ export function createElement(type, config, children) {
 
   if (config != null) {
     // 处理config 并赋值给props
-      ....
-      省略
-      ....
   }
 
   const childrenLength = arguments.length - 2;
   if (childrenLength === 1) {
   //  处理children
-      ....
-      省略
-      ....
   }
 
   // Resolve default props
   if (type && type.defaultProps) {
   //  处理default props
-      ....
-      省略
-      ....
   }
 
   return ReactElement(
@@ -89,9 +80,9 @@ export function createElement(type, config, children) {
   );
 }
 ```
-在React源码中，很明显处理了传入的type，config，children后，最后调用ReactElement方法，返回一个包含组件数据的对象
-
-```js
+在React源码中，很明显处理了传入的type，config，children后，最后调用ReactElement方法，返回一个包含组件数据的对象<br><br>
+省略部分代码
+```js 
 const ReactElement = function(type, key, ref, self, source, owner, props) {
   const element = {
     // 标记这是个 React Element
@@ -105,10 +96,6 @@ const ReactElement = function(type, key, ref, self, source, owner, props) {
     // 记录负责创建此元素的组件。
     _owner: owner,
   };
-
-  ....
-    省略
-  ....
 
   return element;
 };
@@ -152,21 +139,14 @@ ReactDOM.render做了什么？
 3. Blue代表着开始把需要挂载的内容渲染到页面上。
 ![render_process](/React/assets/img.Render/render_process.png)
 
-ReactDOM.render()中的，render方法很简洁，执行了一个叫做legacyRenderSubtreeIntoContainer方法。也没有调用其它的方法或函数。
+ReactDOM.render()中的，render方法很简洁，执行了一个叫做legacyRenderSubtreeIntoContainer方法。也没有调用其它的方法或函数。<br><br>
+省略部分代码
 ```js
 export function render(
   element: React$Element<any>,
   container: Container,
   callback: ?Function,
 ) {
-  invariant(
-    isValidContainer(container),
-    'Target container is not a DOM element.',
-  );
-
-  ...
-  省略
-  ...
 
   return legacyRenderSubtreeIntoContainer(
     null,
@@ -177,7 +157,7 @@ export function render(
   );
 };
 ```
-
+省略部分代码
 ```js
 function legacyRenderSubtreeIntoContainer(
   parentComponent: ?React$Component<any, any>,
@@ -186,9 +166,6 @@ function legacyRenderSubtreeIntoContainer(
   forceHydrate: boolean,
   callback: ?Function,
 ) {
-  '''
-  省略
-  '''
 
   let root: RootType = (container._reactRootContainer: any);
   let fiberRoot;
@@ -199,19 +176,11 @@ function legacyRenderSubtreeIntoContainer(
       forceHydrate,
     );
     
-    '''
-    省略
-    '''
-
     // 更新容器，先调用unbatchedUpdates，更改执行上下文legacyUnbatchedContenxt，之后调用updateContainer进行更新.
     unbatchedUpdates(() => {
       updateContainer(children, fiberRoot, parentComponent, callback);
     });
   } else {
-
-    '''
-    省略
-    '''
 
     // 更新会走这一步流程
     updateContainer(children, fiberRoot, parentComponent, callback);
@@ -220,7 +189,7 @@ function legacyRenderSubtreeIntoContainer(
 }
 ```
 
-关于root的定义
+关于root的定义 省略部分代码
 ```js
 export type RootType = {
   render(children: ReactNodeList): void,
@@ -231,6 +200,8 @@ export type RootType = {
 ```
 
 但是在legacyRenderSubtreeIntoContainer方法中就会对这次执行进行判断。首次进入到该方法中时，因为在react的容器container中还未初始化react应用的环境，所以`container._reactRootContainer`返回的root字段为undefined，需要对root进行初始化，创建ReactDOMRoot对象，初始化react应用环境。从以下代码可以看出首次加载和更新都有调用`updateContainer`方法，该方法是在首次加载时不需要进行批量更新。
+<br><br>
+省略部分代码
 
 ```js
 export function unbatchedUpdates<A, R>(fn: (a: A) => R, a: A): R {
@@ -251,7 +222,8 @@ export function unbatchedUpdates<A, R>(fn: (a: A) => R, a: A): R {
   }
 }
 ```
-在上图中标注框框的调用栈中可以看出，调用更新的入口是`updateContainer`函数.先删除一些无关的代码。初次渲染传入的参数`element`React的节点数据、`container`fiberRoot、`parentaComponent`为null、`callback`
+在上图中标注框框的调用栈中可以看出，调用更新的入口是`updateContainer`函数.先删除一些无关的代码。初次渲染传入的参数`element`React的节点数据、`container`fiberRoot、`parentaComponent`为null、`callback`<br><br>
+省略部分代码
 
 ```js
 function updateContainer(
@@ -268,13 +240,13 @@ function updateContainer(
   // 创建一个优先级变量(车道模型)
   const lane = requestUpdateLane(current);
 
-  // 根据车道优先级, 创建update对象, 并加入fiber.updateQueue.pending队列
+  // 根据车道优先级, 创建update对象
   const update = createUpdate(eventTime, lane);
-  // Caution: React DevTools currently depends on this property
-  // being called "element".
+
+  //设置update对象的payload, 这里element需要注意(是tag=HostRoot特有的设置, 指向<App/>) tag=0
   update.payload = {element};
 
-  // 将新建的一个update对象加入的更新队列中（链表结构）
+  // 将新建的一个update对象加入的更新队列中（链表结构） fiber.updateQueue.pending队列
   enqueueUpdate(current, update);
 
   // 4. 进入reconciler运作流程中的`输入`环节
@@ -283,4 +255,149 @@ function updateContainer(
   return lane;
 }
 ```
+省略部分代码
+```js
+function createUpdate(eventTime: number, lane: Lane): Update<*> {
+  const update: Update<*> = {
+    eventTime, // 创建update的当前时间
+    lane, // 调度优先级
 
+    tag: UpdateState, // 状态标记
+    payload: null, // 
+    callback: null,
+
+    next: null, // next指针
+  };
+  return update;
+}
+```
+
+### render过程
+
+#### scheduleUpdateOnFiber 省略部分代码
+```js
+function scheduleUpdateOnFiber(
+  fiber: Fiber,
+  lane: Lane,
+  eventTime: number,
+) {
+  // 检查最大更新深度 50次 超过抛出错误
+  checkForNestedUpdates();
+  // 该方法只作用于Dev环境
+  warnAboutRenderPhaseUpdatesInDEV(fiber);
+
+  // 首次挂载传入的fiber为根fiber节点，fiber.return 为null tag为3 === HostTag(根节点)
+  // 返回了fiber.stateNode
+  const root = markUpdateLaneFromFiberToRoot(fiber, lane);
+
+  // // legacy下, lane===Sync
+  if (lane === SyncLane) {
+    if (
+      // 检查是否在批处理中
+      (executionContext & LegacyUnbatchedContext) !== NoContext &&
+      // 检查是否还没有渲染
+      (executionContext & (RenderContext | CommitContext)) === NoContext
+    ) {
+      // 初次挂载 传入FiberRoot对象 执行同步更新
+      performSyncWorkOnRoot(root);
+    } else {
+      
+    }
+  } else {
+  }
+}
+```
+#### performSyncWorkOnRoot 省略部分代码
+看上方的调用图中，performSyncOnRoot调用栈分为两部分：renderRootSync 和 commitRoot。分别对应着render阶段和commit阶段
+```js
+function performSyncWorkOnRoot(root) {
+
+  let lanes;
+  let exitStatus;
+
+  // 当前初次挂载 workInProgressRoot为空
+  // 
+  if (
+    root === workInProgressRoot &&
+    includesSomeLane(root.expiredLanes, workInProgressRootRenderLanes)
+  ) {
+  } else {
+    lanes = getNextLanes(root, NoLanes);
+    // 传入FiberRoot对象, 执行同步render
+    exitStatus = renderRootSync(root, lanes);
+  }
+
+  // render结束之后, 设置fiberRoot.finishedWork(指向root.current.alternate)
+  const finishedWork: Fiber = (root.current.alternate: any);
+  root.finishedWork = finishedWork;
+  root.finishedLanes = lanes;
+  commitRoot(root);
+
+  // 再次对fiberRoot进行调度，退出之前保证fiberRoot没有需要调度的任务
+  ensureRootIsScheduled(root, now());
+
+  return null;
+}
+```
+
+#### renderRootSync 省略部分代码
+
+```js
+function renderRootSync(root: FiberRoot, lanes: Lanes) {
+  const prevExecutionContext = executionContext;
+  executionContext |= RenderContext;
+  const prevDispatcher = pushDispatcher();
+
+  // If the root or lanes have changed, throw out the existing stack
+  // and prepare a fresh one. Otherwise we'll continue where we left off.
+  if (workInProgressRoot !== root || workInProgressRootRenderLanes !== lanes) {
+    prepareFreshStack(root, lanes);
+    startWorkOnPendingInteractions(root, lanes);
+  }
+
+  const prevInteractions = pushInteractions(root);
+
+  if (enableSchedulingProfiler) {
+    markRenderStarted(lanes);
+  }
+
+  do {
+    try {
+      workLoopSync();
+      break;
+    } catch (thrownValue) {
+      handleError(root, thrownValue);
+    }
+  } while (true);
+  resetContextDependencies();
+  if (enableSchedulerTracing) {
+    popInteractions(((prevInteractions: any): Set<Interaction>));
+  }
+
+  executionContext = prevExecutionContext;
+  popDispatcher(prevDispatcher);
+
+  if (enableSchedulingProfiler) {
+    markRenderStopped();
+  }
+
+  // Set this to null to indicate there's no in-progress render.
+  workInProgressRoot = null;
+  workInProgressRootRenderLanes = NoLanes;
+
+  return workInProgressRootExitStatus;
+}
+```
+
+#### commitRoot 省略部分代码
+
+```js
+function commitRoot(root) {
+  const renderPriorityLevel = getCurrentPriorityLevel();
+  runWithPriority(
+    ImmediateSchedulerPriority,
+    commitRootImpl.bind(null, root, renderPriorityLevel),
+  );
+  return null;
+}
+```
