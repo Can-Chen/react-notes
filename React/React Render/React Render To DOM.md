@@ -298,7 +298,8 @@ function scheduleUpdateOnFiber(
       // 检查是否还没有渲染
       (executionContext & (RenderContext | CommitContext)) === NoContext
     ) {
-      // 初次挂载 传入FiberRoot对象 执行同步更新
+      // 如果是本次更新是同步的，并且当前还未渲染，意味着主线程空闲，并没有React的
+      // 更新任务在执行，那么调用performSyncWorkOnRoot开始执行同步任务
       performSyncWorkOnRoot(root);
     } else {
       
@@ -344,51 +345,128 @@ function performSyncWorkOnRoot(root) {
 
 ```js
 function renderRootSync(root: FiberRoot, lanes: Lanes) {
+  // 缓存executionContext 描述当前在react执行栈中位置
   const prevExecutionContext = executionContext;
-  executionContext |= RenderContext;
-  const prevDispatcher = pushDispatcher();
 
-  // If the root or lanes have changed, throw out the existing stack
-  // and prepare a fresh one. Otherwise we'll continue where we left off.
+  // 位运算 更新在react执行栈中位置
+  executionContext |= RenderContext;
+
   if (workInProgressRoot !== root || workInProgressRootRenderLanes !== lanes) {
+    // 为当前render设置全新的stack，并设置公共变量workInProgress,workInProgressRoot,workInProgressRootRenderLanes等
     prepareFreshStack(root, lanes);
     startWorkOnPendingInteractions(root, lanes);
   }
 
-  const prevInteractions = pushInteractions(root);
-
-  if (enableSchedulingProfiler) {
-    markRenderStarted(lanes);
-  }
-
   do {
     try {
+      // 执行工作循环
       workLoopSync();
       break;
     } catch (thrownValue) {
       handleError(root, thrownValue);
     }
   } while (true);
+
+  //在React生成执行之前调用，以确保“readContext”`
+  //无法在渲染阶段之外调用。
   resetContextDependencies();
-  if (enableSchedulerTracing) {
-    popInteractions(((prevInteractions: any): Set<Interaction>));
-  }
 
+  // 重置该变量
   executionContext = prevExecutionContext;
-  popDispatcher(prevDispatcher);
 
-  if (enableSchedulingProfiler) {
-    markRenderStopped();
-  }
-
-  // Set this to null to indicate there's no in-progress render.
+  // 表明当前并没有进行的渲染
   workInProgressRoot = null;
   workInProgressRootRenderLanes = NoLanes;
 
   return workInProgressRootExitStatus;
 }
 ```
+prepareFreshStack 省略部分代码
+```js
+function prepareFreshStack(root: FiberRoot, lanes: Lanes) {
 
+  root.finishedWork = null;
+  root.finishedExpirationTime = NoWork;
+
+  // 将root设置成全局workInProgressRoot
+  workInProgressRoot = root;
+  // 给Fiber对象创建一个alternate, 并将其设置成全局workInProgress
+  workInProgress = createWorkInProgress(root.current, null);
+  workInProgressRootRenderLanes = subtreeRenderLanes = workInProgressRootIncludedLanes = lanes;
+  workInProgressRootExitStatus = RootIncomplete;
+  workInProgressRootFatalError = null;
+  workInProgressRootSkippedLanes = NoLanes;
+  workInProgressRootUpdatedLanes = NoLanes;
+  workInProgressRootPingedLanes = NoLanes;
+}
+```
+
+##### workLoopSync 工作循环
+```js
+function workLoopSync() {
+  // 第一次render, workInProgress=HostRootFiber
+  // 循环执行 performUnitOfWork, 这里的workInProgress是从FiberRoot节点开始,依次遍历直到所有的Fiber都遍历完成
+  while (workInProgress !== null) {
+    performUnitOfWork(workInProgress);
+  }
+}
+```
+performUnitOfWork 省略部分代码
+```js
+function performUnitOfWork(unitOfWork: Fiber): void {
+
+  // 第一次render时，unitOfWork = HostRootFiber，alternate已经初始化
+  const current = unitOfWork.alternate;
+
+  let next;
+  if (enableProfilerTimer && (unitOfWork.mode & ProfileMode) !== NoMode) {
+    startProfilerTimer(unitOfWork);
+    // 创建Fiber节点
+    next = beginWork(current, unitOfWork, subtreeRenderLanes);
+    stopProfilerTimerIfRunningAndRecordDelta(unitOfWork, true);
+  } else {
+    next = beginWork(current, unitOfWork, subtreeRenderLanes);
+  }
+
+  unitOfWork.memoizedProps = unitOfWork.pendingProps;
+  if (next === null) {
+    // 深度优先的方式，到达深节点后，先进行completeWork，下一步可能进行兄弟节点的beginWork或继续completeWork父节点
+    completeUnitOfWork(unitOfWork);
+  } else {
+    workInProgress = next;
+  }
+
+  ReactCurrentOwner.current = null;
+}
+```
+performUnitOfWork对当前传入Fiber节点开始, 进行深度优先循环处理.
+
+可以把workLoopSync的调用逻辑全部串联起来.
+
+![work-loop](../../React/assets/img.Render/work-loop.jpg)
+
+其中与工作循环相关主要有 4 个主要函数:
+
+* `performUnitOfWork(unitOfWork: Fiber): void`
+* `beginWork(current: Fiber | null, workInProgress: Fiber, renderLanes: Lanes,): Fiber | null`
+* `completeUnitOfWork(unitOfWork: Fiber): void`
+* `completeWork(current: Fiber | null, workInProgress: Fiber, renderLanes: Lanes,): Fiber | null`
+
+每个 Fiber 对象的处理过程分为 2 个步骤:
+
+1. `beginWork(current, unitOfWork, subtreeRenderLanes)`, `diff`算法在这里实现(由于初次 render 没有需要进行比较的对象, 都是新增, 正式的`diff`在`update`阶段)
+
+   - 根据 reactElement 对象创建所有的 Fiber 节点, 构造 Fiber 树形结构(根据当前 Fiber 的情况设置`return`(父级)和`sibling`(兄弟)指针)
+   - 给当前 Fiber 对象设置`effectTag`标记(二进制位, 用来标记 Fiber 的增,删,改状态)
+   - 给抽象类型的 Fiber(如: class )对象设置`stateNode`(此时: `fiber.stateNode=new Class()`)
+
+2. `completeUnitOfWork(unitOfWork)`, 处理 beginWork 阶段已经创建出来的 Fiber 节点.
+   - 给 Fiber 节点(tag=HostComponent, HostText)创建 DOM 实例, fiber.stateNode 指向这个 DOM 实例,
+   - 为 DOM 节点设置属性, 绑定事件(这里不做详细说明).
+   - 把当前 Fiber 对象的 effects 队列添加到父节点 effects 队列之后, 更新父节点的`firstEffect`, `lastEffect`指针.
+   - 根据 beginWork 阶段设置的`effectTag`判断当前 Fiber 是否有副作用(增,删,改), 如果有, 需要将当前 Fiber 加入到父节点的`effects`队列, 等待 commit 阶段处理.
+
+##### beginWork 省略部分代码
 #### commitRoot 省略部分代码
 
 ```js

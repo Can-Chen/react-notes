@@ -2,10 +2,10 @@
 ---
 记录React知识
 
-### [React](https://github.com/Can-Chen/react-notes/blob/main/React.md)
+### [React](https://github.com/Can-Chen/react-notes/tree/main/React)
 记录React相关的知识
 
-### [React-Router](https://github.com/Can-Chen/react-notes/blob/main/React-Router/react-router-dom.md)
+### [React-Router](https://github.com/Can-Chen/react-notes/tree/main/React-Router)
 记录React- Router相关的知识
 
 ### React-Redux
