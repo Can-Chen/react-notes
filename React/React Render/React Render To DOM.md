@@ -467,6 +467,176 @@ performUnitOfWork对当前传入Fiber节点开始, 进行深度优先循环处�
    - 根据 beginWork 阶段设置的`effectTag`判断当前 Fiber 是否有副作用(增,删,改), 如果有, 需要将当前 Fiber 加入到父节点的`effects`队列, 等待 commit 阶段处理.
 
 ##### beginWork 省略部分代码
+```js
+function beginWork(
+  // 当前组件对应的Fiber节点在上一次更新时的Fiber节点，即workInProgress.alternate
+  current: Fiber | null,
+  // 当前组件对应的Fiber节点
+  workInProgress: Fiber,
+  // 优先级相关
+  renderLanes: Lanes,
+): Fiber | null {
+  const updateLanes = workInProgress.lanes;
+
+  // 初次渲染 只有rootFiber存在currentFiber树，其余的都为null
+  // 先不用看更新
+  if (current !== null) {
+  } else {
+    didReceiveUpdate = false;
+  }
+
+  workInProgress.lanes = NoLanes;
+
+  switch (workInProgress.tag) {
+    case IndeterminateComponent: {
+      return mountIndeterminateComponent(
+        ...
+      );
+    }
+    case LazyComponent: {
+      const elementType = workInProgress.elementType;
+      return mountLazyComponent(
+        ...
+      );
+    }
+    case FunctionComponent: {
+      ...
+      return updateFunctionComponent(
+        ...
+      );
+    }
+    // 类组件
+    case ClassComponent: {
+     ...
+      return updateClassComponent(
+        ...
+      );
+    }
+    // 根节点
+    case HostRoot:
+      return updateHostRoot(current, workInProgress, renderLanes);
+    // 普通节点
+    case HostComponent:
+      return updateHostComponent(current, workInProgress, renderLanes);
+    // 文本节点
+    case HostText:
+      return updateHostText(current, workInProgress);
+      ...
+}
+```
+这个函数是针对所有的 Fiber 类型, 其中的每一个 case 处理一种 Fiber 类型.
+
+`updateXXX`函数(如: updateHostRoot, updateFunctionComponent 等)的主要逻辑有 3 个步骤:
+
+1. 收集整合当前 Fiber 节点的必要状态属性(如: state, props)
+   - 更新当前 Fiber 的`effectTag`
+2. 获取下级`reactElement`对象
+   * class 类型的 Fiber 节点
+   - 构建`React.Component`实例,
+     - 设置`fiber.stateNode`指向这个新的实例
+     - 执行`render`之前的生命周期函数
+     - 执行`render`方法, 获取下级`reactElement`
+   - 更新当前节点的`effectTag`
+   * function 类型的 Fiber 节点
+   - 执行 function, 获取下级`reactElement`
+     - `Fiber.memoizedState`指向`hook`队列
+     - 初始化`Fiber.memoizedState`队列中的每一个`hook`对象, 使其拥有独立的`memoizedState`
+   - 更新当前节点的`effectTag`
+   * HostComponent 类型(如: div, span, button 等)的 Fiber 节点
+   - `pendingProps.children`作为下级`reactElement`
+     - 如果下级节点是文本节点,则设置下级节点为 null. 准备进入`completeUnitOfWork`阶段
+   - 更新当前节点的`effectTag`
+   * ...
+3. 生成`Fiber`子树
+   - `diff`算法, 设置子树 Fiber 节点的`effectTag`
+
+updateHostComponent 省略部分代码
+```js
+function updateHostComponent(
+  current: Fiber | null,
+  workInProgress: Fiber,
+  renderLanes: Lanes,
+) {
+  pushHostContext(workInProgress);
+
+  if (current === null) {
+    // return void
+    tryToClaimNextHydratableInstance(workInProgress);
+  }
+
+  // 收集当前Fiber节点的必要状态属性
+  // 节点类型
+  const type = workInProgress.type;
+  const nextProps = workInProgress.pendingProps;
+  const prevProps = current !== null ? current.memoizedProps : null;
+
+  let nextChildren = nextProps.children;
+  // 判断当前子节点是否只存在一个文本节点，如果是并不会对这个子文本节点生成fiber节点
+  const isDirectTextChild = shouldSetTextContent(type, nextProps);
+
+  if (isDirectTextChild) {
+    nextChildren = null;
+  } else if (prevProps !== null && shouldSetTextContent(type, prevProps)) {
+    // 从文本子节点转换为正常的字节点，需要把文本节点重置
+    workInProgress.flags |= ContentReset;
+  }
+
+  // 更新当前fiber的effectTag
+  markRef(current, workInProgress);
+  // 生成fiber子树
+  reconcileChildren(current, workInProgress, nextChildren, renderLanes);
+  return workInProgress.child;
+}
+```
+
+updateHostText 省略部分代码
+```js
+function updateHostText(current, workInProgress) {
+  if (current === null) {
+    tryToClaimNextHydratableInstance(workInProgress);
+  }
+  return null;
+}
+```
+很显然，不管是在更新还是挂载阶段，对文本节点不会进行特殊的处理，直接就返回了。
+<br>
+
+updateHostRoot 省略部分代码
+
+```js
+function updateHostRoot(current, workInProgress, renderLanes) {
+  pushHostRootContext(workInProgress);
+
+  // 收集整合当前Fiber节点的必要状态属性(例如: state, props)
+  const updateQueue = workInProgress.updateQueue;
+  const nextProps = workInProgress.pendingProps;
+  const prevState = workInProgress.memoizedState;
+  const prevChildren = prevState !== null ? prevState.element : null;
+
+  // clone一个updateQueue, 分离current和workInProgress对updateQueue的引用.
+  // (以前是同一个引用, clone之后引用不同)方便后面processUpdateQueue
+  cloneUpdateQueue(current, workInProgress);
+
+  // 处理updateQueue,设置workInProgress的memoizedState,lanes等属性
+  processUpdateQueue(workInProgress, nextProps, null, renderLanes);
+  const nextState = workInProgress.memoizedState;
+
+  // 获取下级的reactElement对象, 用于生成Fiber子树(HostRoot比较特殊, 直接拿到初始的react对象)
+  const nextChildren = nextState.element;
+  if (nextChildren === prevChildren) {
+    resetHydrationState();
+    return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
+  }
+  const root: FiberRoot = workInProgress.stateNode;
+  if (root.hydrate && enterHydrationState(workInProgress)) {
+  } else {
+    // 生产fiber子树，diff算法，设置子树fiber节点的effectTag
+    reconcileChildren(current, workInProgress, nextChildren, renderLanes);
+    resetHydrationState();
+  }
+  return workInProgress.child;
+}
+```
 #### commitRoot 省略部分代码
 
 ```js
