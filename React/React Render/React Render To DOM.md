@@ -639,7 +639,7 @@ function updateHostRoot(current, workInProgress, renderLanes) {
 ```
 
 reconcileChildren 省略部分代码<br><br>
-首次加载进入mountChildFibers，而mountChildFibers方法与reconcileChildFibers方法区别就只是传参的区别，而这个bool的状态代表着本次reconciler存在副作用
+首次加载进入mountChildFibers，而mountChildFibers方法与reconcileChildFibers方法区别就只是传参的区别，而这个bool的状态代表着本次reconciler是否需要处理副作用。
 ```js
 export const reconcileChildFibers = ChildReconciler(true);
 export const mountChildFibers = ChildReconciler(false);
@@ -668,6 +668,100 @@ function reconcileChildren(
       renderLanes,
     );
   }
+}
+```
+ChildReconciler 省略部分代码<br><br>
+协调阶段子节点fiber的生成。
+
+```js
+// 传入bool，由于是初次挂载，传入为false
+function ChildReconciler(shouldTrackSideEffects) {
+  function deleteChild(returnFiber: Fiber, childToDelete: Fiber): void {
+    // 不存在需要操作的副作用，直接返回
+    if (!shouldTrackSideEffects) {
+      // Noop.
+      return;
+    }
+
+    const last = returnFiber.lastEffect;
+    if (last !== null) {
+      last.nextEffect = childToDelete;
+      returnFiber.lastEffect = childToDelete;
+    } else {
+      returnFiber.firstEffect = returnFiber.lastEffect = childToDelete;
+    }
+    childToDelete.nextEffect = null;
+    childToDelete.flags = Deletion;
+  }
+
+  ...
+  超级多的处理😁，全部省略。
+  ...
+  
+  function reconcileChildFibers(
+    returnFiber: Fiber,
+    currentFirstChild: Fiber | null,
+    newChild: any,
+    lanes: Lanes,
+  ): Fiber | null {
+
+    const isUnkeyedTopLevelFragment =
+      typeof newChild === 'object' &&
+      newChild !== null &&
+      newChild.type === REACT_FRAGMENT_TYPE &&
+      newChild.key === null;
+    if (isUnkeyedTopLevelFragment) {
+      newChild = newChild.props.children;
+    }
+
+    // Handle object types
+    const isObject = typeof newChild === 'object' && newChild !== null;
+
+    if (isObject) {
+      switch (newChild.$$typeof) {
+        // 如果是react.element节点，对这个进行处理
+        case REACT_ELEMENT_TYPE:
+          return placeSingleChild(
+            reconcileSingleElement(
+              returnFiber,
+              currentFirstChild,
+              newChild,
+              lanes,
+            ),
+          );
+          ...
+          ...
+      }
+    }
+
+    // 文本节点
+    if (typeof newChild === 'string' || typeof newChild === 'number') {
+      return placeSingleChild(
+        reconcileSingleTextNode(
+          returnFiber,
+          currentFirstChild,
+          '' + newChild,
+          lanes,
+        ),
+      );
+    }
+
+    // 数组类型，比如说一个element包裹多个element，虽然是数组类型，但是生成的还是当前第一个fiber节点。
+    if (isArray(newChild)) {
+      return reconcileChildrenArray(
+        returnFiber,
+        currentFirstChild,
+        newChild,
+        lanes,
+      );
+    }
+
+    ...
+    省略
+    ...
+  }
+
+  return reconcileChildFibers;
 }
 ```
 
