@@ -677,21 +677,13 @@ ChildReconciler 省略部分代码<br><br>
 // 传入bool，由于是初次挂载，传入为false
 function ChildReconciler(shouldTrackSideEffects) {
   function deleteChild(returnFiber: Fiber, childToDelete: Fiber): void {
-    // 不存在需要操作的副作用，直接返回
+    // 不存在需要处理的副作用，直接返回
     if (!shouldTrackSideEffects) {
       // Noop.
       return;
     }
 
-    const last = returnFiber.lastEffect;
-    if (last !== null) {
-      last.nextEffect = childToDelete;
-      returnFiber.lastEffect = childToDelete;
-    } else {
-      returnFiber.firstEffect = returnFiber.lastEffect = childToDelete;
-    }
-    childToDelete.nextEffect = null;
-    childToDelete.flags = Deletion;
+    ...
   }
 
   ...
@@ -714,7 +706,6 @@ function ChildReconciler(shouldTrackSideEffects) {
       newChild = newChild.props.children;
     }
 
-    // Handle object types
     const isObject = typeof newChild === 'object' && newChild !== null;
 
     if (isObject) {
@@ -770,49 +761,45 @@ completeUnitOfWork 省略部分代码
 ```js
 
 function completeUnitOfWork(unitOfWork: Fiber): void {
-  // Attempt to complete the current unit of work, then move to the next
-  // sibling. If there are no more siblings, return to the parent fiber.
+
   let completedWork = unitOfWork;
   do {
-    // The current, flushed, state of this fiber is the alternate. Ideally
-    // nothing should rely on this, but relying on it here means that we don't
-    // need an additional field on the work in progress.
+
     const current = completedWork.alternate;
+    // 保存父级fiber节点
     const returnFiber = completedWork.return;
 
-    // Check if the work completed or if something threw.
     if ((completedWork.flags & Incomplete) === NoFlags) {
-      setCurrentDebugFiberInDEV(completedWork);
+
       let next;
+
       if (
         !enableProfilerTimer ||
         (completedWork.mode & ProfileMode) === NoMode
       ) {
         next = completeWork(current, completedWork, subtreeRenderLanes);
       } else {
+        // 记录开始时间
         startProfilerTimer(completedWork);
+        // 构建dom节点
         next = completeWork(current, completedWork, subtreeRenderLanes);
-        // Update render duration assuming we didn't error.
+        // 更新渲染持续时间
         stopProfilerTimerIfRunningAndRecordDelta(completedWork, false);
       }
-      resetCurrentDebugFiberInDEV();
 
       if (next !== null) {
-        // Completing this fiber spawned new work. Work on that next.
+        // completeWork过程产生了新的Fiber节点, 退出循环, 回到performUnitOfWork阶段
         workInProgress = next;
         return;
       }
 
-      resetChildLanes(completedWork);
-
       if (
         returnFiber !== null &&
-        // Do not append effects to parents if a sibling failed to complete
+        // 兄弟节点未完成
         (returnFiber.flags & Incomplete) === NoFlags
       ) {
-        // Append all the effects of the subtree and this fiber onto the effect
-        // list of the parent. The completion order of the children affects the
-        // side-effect order.
+        // 收集当前Fiber节点以及其子树的副作用effects
+        // 把所有子树的effects和当前Fiber的effects添加到父节点的effect队列当中去
         if (returnFiber.firstEffect === null) {
           returnFiber.firstEffect = completedWork.firstEffect;
         }
@@ -823,17 +810,9 @@ function completeUnitOfWork(unitOfWork: Fiber): void {
           returnFiber.lastEffect = completedWork.lastEffect;
         }
 
-        // If this fiber had side-effects, we append it AFTER the children's
-        // side-effects. We can perform certain side-effects earlier if needed,
-        // by doing multiple passes over the effect list. We don't want to
-        // schedule our own side-effect on our own list because if end up
-        // reusing children we'll schedule this effect onto itself since we're
-        // at the end.
+        // 如果当前Fiber有side-effects, 将其添加到子节点的side-effects之后.
         const flags = completedWork.flags;
 
-        // Skip both NoWork and PerformedWork tags when creating the effect
-        // list. PerformedWork effect is read by React DevTools but shouldn't be
-        // committed.
         if (flags > PerformedWork) {
           if (returnFiber.lastEffect !== null) {
             returnFiber.lastEffect.nextEffect = completedWork;
@@ -844,65 +823,150 @@ function completeUnitOfWork(unitOfWork: Fiber): void {
         }
       }
     } else {
-      // This fiber did not complete because something threw. Pop values off
-      // the stack without entering the complete phase. If this is a boundary,
-      // capture values if possible.
-      const next = unwindWork(completedWork, subtreeRenderLanes);
-
-      // Because this fiber did not complete, don't reset its expiration time.
-
-      if (next !== null) {
-        // If completing this work spawned new work, do that next. We'll come
-        // back here again.
-        // Since we're restarting, remove anything that is not a host effect
-        // from the effect tag.
-        next.flags &= HostEffectMask;
-        workInProgress = next;
-        return;
-      }
-
-      if (
-        enableProfilerTimer &&
-        (completedWork.mode & ProfileMode) !== NoMode
-      ) {
-        // Record the render duration for the fiber that errored.
-        stopProfilerTimerIfRunningAndRecordDelta(completedWork, false);
-
-        // Include the time spent working on failed children before continuing.
-        let actualDuration = completedWork.actualDuration;
-        let child = completedWork.child;
-        while (child !== null) {
-          actualDuration += child.actualDuration;
-          child = child.sibling;
-        }
-        completedWork.actualDuration = actualDuration;
-      }
-
-      if (returnFiber !== null) {
-        // Mark the parent fiber as incomplete and clear its effect list.
-        returnFiber.firstEffect = returnFiber.lastEffect = null;
-        returnFiber.flags |= Incomplete;
-      }
     }
 
+    // 切换下一个需要处理的Fiber节点
+    // 同级节点
     const siblingFiber = completedWork.sibling;
     if (siblingFiber !== null) {
-      // If there is more work to do in this returnFiber, do that next.
       workInProgress = siblingFiber;
       return;
     }
-    // Otherwise, return to the parent
+    // 父级节点
     completedWork = returnFiber;
-    // Update the next thing we're working on in case something throws.
     workInProgress = completedWork;
   } while (completedWork !== null);
 
-  // We've reached the root.
+  // 所有Fiber处理完成, 设置全局状态为RootCompleted, workLoopSync结束
   if (workInProgressRootExitStatus === RootIncomplete) {
     workInProgressRootExitStatus = RootCompleted;
   }
 }
 ```
+
+completeWork 省略部分代码
+```js
+function completeWork(
+  current: Fiber | null,
+  workInProgress: Fiber,
+  renderLanes: Lanes,
+): Fiber | null {
+  const newProps = workInProgress.pendingProps;
+
+  switch (workInProgress.tag) {
+    case IndeterminateComponent:
+    case LazyComponent:
+    case SimpleMemoComponent:
+    case FunctionComponent:
+    case ForwardRef:
+    case Fragment:
+    case Mode:
+    case Profiler:
+    case ContextConsumer:
+    case MemoComponent:
+      return null;
+    case ClassComponent: {
+      const Component = workInProgress.type;
+      if (isLegacyContextProvider(Component)) {
+        popLegacyContext(workInProgress);
+      }
+      return null;
+    }
+    case HostRoot: {
+      popHostContainer(workInProgress);
+      popTopLevelLegacyContextObject(workInProgress);
+      resetMutableSourceWorkInProgressVersions();
+      const fiberRoot = (workInProgress.stateNode: FiberRoot);
+      if (fiberRoot.pendingContext) {
+        fiberRoot.context = fiberRoot.pendingContext;
+        fiberRoot.pendingContext = null;
+      }
+      if (current === null || current.child === null) {
+
+        const wasHydrated = popHydrationState(workInProgress);
+        if (wasHydrated) {
+
+          markUpdate(workInProgress);
+        } else if (!fiberRoot.hydrate) {
+          workInProgress.flags |= Snapshot;
+        }
+      }
+      updateHostContainer(workInProgress);
+      return null;
+    }
+    // 其余类型全删了😄，代码太多
+    case HostComponent: {
+      popHostContext(workInProgress);
+      const rootContainerInstance = getRootHostContainer();
+      const type = workInProgress.type;
+      if (current !== null && workInProgress.stateNode != null) {
+        updateHostComponent(
+          current,
+          workInProgress,
+          type,
+          newProps,
+          rootContainerInstance,
+        );
+
+        if (current.ref !== workInProgress.ref) {
+          markRef(workInProgress);
+        }
+      } else {
+        if (!newProps) {
+ 
+          return null;
+        }
+
+        const currentHostContext = getHostContext();
+        const wasHydrated = popHydrationState(workInProgress);
+        if (wasHydrated) {
+
+          if (
+            prepareToHydrateHostInstance(
+              workInProgress,
+              rootContainerInstance,
+              currentHostContext,
+            )
+          ) {
+
+            markUpdate(workInProgress);
+          }
+        } else {
+          const instance = createInstance(
+            type,
+            newProps,
+            rootContainerInstance,
+            currentHostContext,
+            workInProgress,
+          );
+
+          appendAllChildren(instance, workInProgress, false, false);
+
+          workInProgress.stateNode = instance;
+
+          if (
+            finalizeInitialChildren(
+              instance,
+              type,
+              newProps,
+              rootContainerInstance,
+              currentHostContext,
+            )
+          ) {
+            markUpdate(workInProgress);
+          }
+        }
+
+        if (workInProgress.ref !== null) {
+          markRef(workInProgress);
+        }
+      }
+      return null;
+    }
+  }
+}
+```
+
 #### commitRoot 省略部分代码
 
 ```js
