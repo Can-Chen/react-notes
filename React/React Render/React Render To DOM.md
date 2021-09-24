@@ -872,26 +872,27 @@ function completeWork(
       }
       return null;
     }
+    // tag为3的根节点
+    // 此时workInProress.child.child.stateNode指向已经构建完的整颗dom树
     case HostRoot: {
       popHostContainer(workInProgress);
       popTopLevelLegacyContextObject(workInProgress);
       resetMutableSourceWorkInProgressVersions();
+
       const fiberRoot = (workInProgress.stateNode: FiberRoot);
       if (fiberRoot.pendingContext) {
-        fiberRoot.context = fiberRoot.pendingContext;
-        fiberRoot.pendingContext = null;
-      }
+      };
+      // 首次挂载只有根fiber节点存在current，current.child === null
       if (current === null || current.child === null) {
 
         const wasHydrated = popHydrationState(workInProgress);
         if (wasHydrated) {
-
-          markUpdate(workInProgress);
         } else if (!fiberRoot.hydrate) {
           workInProgress.flags |= Snapshot;
         }
       }
       updateHostContainer(workInProgress);
+      // 至此，初次挂载的Reconiler阶段完成
       return null;
     }
     // 其余类型全删了😄，代码太多
@@ -899,39 +900,15 @@ function completeWork(
       popHostContext(workInProgress);
       const rootContainerInstance = getRootHostContainer();
       const type = workInProgress.type;
+      // 首次挂载 current除了根节点以外都为空
       if (current !== null && workInProgress.stateNode != null) {
-        updateHostComponent(
-          current,
-          workInProgress,
-          type,
-          newProps,
-          rootContainerInstance,
-        );
-
-        if (current.ref !== workInProgress.ref) {
-          markRef(workInProgress);
-        }
       } else {
-        if (!newProps) {
- 
-          return null;
-        }
-
         const currentHostContext = getHostContext();
+
         const wasHydrated = popHydrationState(workInProgress);
         if (wasHydrated) {
-
-          if (
-            prepareToHydrateHostInstance(
-              workInProgress,
-              rootContainerInstance,
-              currentHostContext,
-            )
-          ) {
-
-            markUpdate(workInProgress);
-          }
         } else {
+          // 创建DOM对象
           const instance = createInstance(
             type,
             newProps,
@@ -940,11 +917,14 @@ function completeWork(
             workInProgress,
           );
 
+          // 把子树中的DOM对象append到本节点的instance之中
           appendAllChildren(instance, workInProgress, false, false);
 
+          // 设置stateNode，指向DOM对象
           workInProgress.stateNode = instance;
 
           if (
+            // 设置DOM对象的属性, 绑定事件等
             finalizeInitialChildren(
               instance,
               type,
@@ -957,6 +937,7 @@ function completeWork(
           }
         }
 
+        // 存在ref属性 处理回调
         if (workInProgress.ref !== null) {
           markRef(workInProgress);
         }
@@ -966,6 +947,66 @@ function completeWork(
   }
 }
 ```
+
+存在一个这样的`<App />`组件
+```tsx
+ReactDOM.render(
+    <App />,
+  document.getElementById('root')
+);
+
+function App() {
+  return (
+    <div className="App">
+      <header className="App-header">
+        <img src={''} className="App-logo" alt="logo" />
+        <p>
+          Edit <code>src/App.tsx</code> and save to reload.
+        </p>
+      </header>
+    </div>
+  );
+}
+
+```
+工作循环流程如下：
+
+beginWork：第一次执行`beginWork`之前，`workInProgress`指向`HostRootFiber.alternate`对象
+
+beginWork：第一次执行`beginWork`之后，`workInProgress`指向`Fiber`对象(`<App />`)
+
+beginWork：第二次执行`beginWork`之后，`workInProgress`指向`<App />`的子节点`<div/>`
+
+beginWork：第三次执行`beginWork`之后，`workInProgress`指向`<div />`的子节点`<header />`
+
+beginWork：第四次执行`beginWork`之后，`workInProgress`指向`<header />`的子节点`<img />`
+
+beginWork：第五次执行`beginWork`之后，`workInProgress`没有子节点，后面进行`completeUnitWork`
+
+completeWork：由于`<img />`节点下不存在相应的字节点，此时对`<img />`执行`completeWork`。`Fiber`节点的`stateNode`属性指向该节点对应的DOM对象。
+
+beginWork：上一步`completeWork`执行完之后，`workInProgress`指针移动指向`sibling`节点，由于`<p />`节点未执行过`beginWork`阶段，所以先执行`beginWork`
+
+beginWork：执行对`Edit`文本节点的`beginWork`
+
+completeWork：执行对`Edit`文本节点的`completeWork`，更新其`stateNode`属性，指向对应的`DOM`文本节点
+
+beginWork：执行对`<code />`节点的`beginWork`，由于`<code />`节点下就只有存在一个纯文本节点，跳过对该节点的`beginWork`，直接对`<code />`节点进行`completeWork`阶段。
+
+completeWork：执行对`<code />`节点的`completeWork`
+
+beginWork：执行对文本节点`and save to reload`的`beginWork`
+
+completeWork：执行对`<p />`节点的`compltetWork`，`<p />`节点所有子节点都执行完`completeWork`之后。workInProgress指向`Fiber(p)`节点，更新其`stateNode`属性，指向对应的`DOM`对象
+
+completeWork：执行对`<header />`节点的`completeWork`，`<header />`节点所有子节点都执行完`completeWork`之后。workInProgress指向`Fiber(header)`节点，更新其`stateNode`属性，指向对应的`DOM`对象
+
+completeWork：执行对`<div/>`节点的`completeWork`，`<div />`节点所有子节点都执行完`completeWork`之后。workInProgress指向`Fiber(div)`节点，更新其`stateNode`属性，指向对应的`DOM`对象
+
+completeWork：`workInProgress`指针指向`<App/>`节点
+
+completeWork：`workInProgress`指向根fiber节点。`firstEffect`和`lastEffect`属性分别指向`effects`队列的开始（根fiber节点）和末尾（根fiber节点）
+
 
 #### commitRoot 省略部分代码
 
