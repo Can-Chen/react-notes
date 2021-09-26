@@ -971,42 +971,43 @@ function App() {
 ```
 工作循环流程如下：
 
-beginWork：第一次执行`beginWork`之前，`workInProgress`指向`HostRootFiber.alternate`对象
+- beginWork：第一次执行`beginWork`，`workInProgress`指向根`Fiber`对象
 
-beginWork：第一次执行`beginWork`之后，`workInProgress`指向`Fiber`对象(`<App />`)
+- beginWork：第二次执行`beginWork`，`workInProgress`指向`Fiber`对象的子节点(`<App />`)
 
-beginWork：第二次执行`beginWork`之后，`workInProgress`指向`<App />`的子节点`<div/>`
+- beginWork：第三次执行`beginWork`，`workInProgress`指向`<App />`的子节点`<div/>`
 
-beginWork：第三次执行`beginWork`之后，`workInProgress`指向`<div />`的子节点`<header />`
+- beginWork：第四次执行`beginWork`，`workInProgress`指向`<div />`的子节点`<header />`
 
-beginWork：第四次执行`beginWork`之后，`workInProgress`指向`<header />`的子节点`<img />`
+- beginWork：第五次执行`beginWork`，`workInProgress`指向`<header />`的子节点`<img />`
 
-beginWork：第五次执行`beginWork`之后，`workInProgress`没有子节点，后面进行`completeUnitWork`
+- beginWork：第六次执行`beginWork`，`<img />`没有子节点，`workInProgress`为空，执行`completeUnitWork`
 
-completeWork：由于`<img />`节点下不存在相应的字节点，此时对`<img />`执行`completeWork`。`Fiber`节点的`stateNode`属性指向该节点对应的DOM对象。
+- completeWork：由于`<img />`节点下不存在相应的字节点，此时对`<img />`执行`completeWork`。`Fiber`节点的`stateNode`属性指向该节点对应的DOM对象。
 
-beginWork：上一步`completeWork`执行完之后，`workInProgress`指针移动指向`sibling`节点，由于`<p />`节点未执行过`beginWork`阶段，所以先执行`beginWork`
+- beginWork：上一步`completeWork`执行完之后，`workInProgress`指针移动指向`sibling`节点，由于`<p />`节点未执行过`beginWork`阶段，所以先执行`beginWork`
 
-beginWork：执行对`Edit`文本节点的`beginWork`
+- beginWork：执行对`Edit`文本节点的`beginWork`
 
-completeWork：执行对`Edit`文本节点的`completeWork`，更新其`stateNode`属性，指向对应的`DOM`文本节点
+- completeWork：执行对`Edit`文本节点的`completeWork`，更新其`stateNode`属性，指向对应的`DOM`文本节点
 
-beginWork：执行对`<code />`节点的`beginWork`，由于`<code />`节点下就只有存在一个纯文本节点，跳过对该节点的`beginWork`，直接对`<code />`节点进行`completeWork`阶段。
+- beginWork：执行对`<code />`节点的`beginWork`，由于`<code />`节点下就只有存在一个纯文本节点，跳过对该节点的`beginWork`，直接对`<code />`节点进行`completeWork`阶段。
 
-completeWork：执行对`<code />`节点的`completeWork`
+- completeWork：执行对`<code />`节点的`completeWork`
 
-beginWork：执行对文本节点`and save to reload`的`beginWork`
+- beginWork：执行对文本节点`and save to reload`的`beginWork`
 
-completeWork：执行对`<p />`节点的`compltetWork`，`<p />`节点所有子节点都执行完`completeWork`之后。workInProgress指向`Fiber(p)`节点，更新其`stateNode`属性，指向对应的`DOM`对象
+- completeWork：执行对`<p />`节点的`compltetWork`，`<p />`节点所有子节点都执行完`completeWork`之后。workInProgress指向`Fiber(p)`节点，更新其`stateNode`属性，指向对应的`DOM`对象
 
-completeWork：执行对`<header />`节点的`completeWork`，`<header />`节点所有子节点都执行完`completeWork`之后。workInProgress指向`Fiber(header)`节点，更新其`stateNode`属性，指向对应的`DOM`对象
+- completeWork：执行对`<header />`节点的`completeWork`，`<header />`节点所有子节点都执行完`completeWork`之后。workInProgress指向`Fiber(header)`节点，更新其`stateNode`属性，指向对应的`DOM`对象
 
-completeWork：执行对`<div/>`节点的`completeWork`，`<div />`节点所有子节点都执行完`completeWork`之后。workInProgress指向`Fiber(div)`节点，更新其`stateNode`属性，指向对应的`DOM`对象
+- completeWork：执行对`<div/>`节点的`completeWork`，`<div />`节点所有子节点都执行完`completeWork`之后。workInProgress指向`Fiber(div)`节点，更新其`stateNode`属性，指向对应的`DOM`对象
 
-completeWork：`workInProgress`指针指向`<App/>`节点
+- completeWork：`workInProgress`指针指向`<App/>`节点
 
-completeWork：`workInProgress`指向根fiber节点。`firstEffect`和`lastEffect`属性分别指向`effects`队列的开始（根fiber节点）和末尾（根fiber节点）
+- completeWork：`workInProgress`指向根fiber节点。`firstEffect`和`lastEffect`属性分别指向`effects`队列的开始（根fiber节点）和末尾（根fiber节点）
 
+![beginWork - completeWork](../assets/img.Render/%20beginWork%20-%20completeWork.jpg)
 
 #### commitRoot 省略部分代码
 
