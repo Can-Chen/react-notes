@@ -1021,3 +1021,184 @@ function commitRoot(root) {
   return null;
 }
 ```
+
+```js
+function commitRootImpl(root, renderPriorityLevel) {
+
+  // 设置局部变量
+  const finishedWork = root.finishedWork;
+  const lanes = root.finishedLanes;
+
+  if (enableSchedulingProfiler) {
+    markCommitStarted(lanes);
+  }
+
+  // 更新FiberRoot对象上的属性
+  root.finishedWork = null;
+  root.finishedLanes = NoLanes;
+
+  root.callbackNode = null;
+
+  let remainingLanes = mergeLanes(finishedWork.lanes, finishedWork.childLanes);
+  markRootFinished(root, remainingLanes);
+
+  // Get the list of effects.
+  let firstEffect;
+  if (finishedWork.flags > PerformedWork) {
+    if (finishedWork.lastEffect !== null) {
+      finishedWork.lastEffect.nextEffect = finishedWork;
+      firstEffect = finishedWork.firstEffect;
+    } else {
+    }
+  } else {
+    // There is no effect on the root.
+    firstEffect = finishedWork.firstEffect;
+  }
+
+  if (firstEffect !== null) {
+    let previousLanePriority;
+    if (decoupleUpdatePriorityFromScheduler) {
+      previousLanePriority = getCurrentUpdateLanePriority();
+      setCurrentUpdateLanePriority(SyncLanePriority);
+    }
+
+    const prevExecutionContext = executionContext;
+    executionContext |= CommitContext;
+    const prevInteractions = pushInteractions(root);
+
+    // Reset this to null before calling lifecycles
+    ReactCurrentOwner.current = null;
+
+    focusedInstanceHandle = prepareForCommit(root.containerInfo);
+    shouldFireAfterActiveInstanceBlur = false;
+
+    // before mutaion.  调用getSnapshotBeforeUpdate
+    nextEffect = firstEffect;
+    do {
+      if (__DEV__) {
+      } else {
+        try {
+          commitBeforeMutationEffects();
+        } catch (error) {
+          invariant(nextEffect !== null, 'Should be working on an effect.');
+          captureCommitPhaseError(nextEffect, error);
+          nextEffect = nextEffect.nextEffect;
+        }
+      }
+    } while (nextEffect !== null);
+
+    // We no longer need to track the active instance fiber
+    focusedInstanceHandle = null;
+
+    if (enableProfilerTimer) {
+      recordCommitTime();
+    }
+
+    // mutation. 调用渲染器, 更新到最新的Fiber状态
+    nextEffect = firstEffect;
+    do {
+      if (__DEV__) {
+      } else {
+        try {
+          commitMutationEffects(root, renderPriorityLevel);
+        } catch (error) {
+          invariant(nextEffect !== null, 'Should be working on an effect.');
+          captureCommitPhaseError(nextEffect, error);
+          nextEffect = nextEffect.nextEffect;
+        }
+      }
+    } while (nextEffect !== null);
+
+    if (shouldFireAfterActiveInstanceBlur) {
+      afterActiveInstanceBlur();
+    }
+    resetAfterCommit(root.containerInfo);
+
+    // FiberRoot的current指向finishedWork
+    // 在layout阶段之前, current指向的是HostRootFiber.
+    // 在layout阶段, current指向的是RootFiber.alternate.
+    root.current = finishedWork;
+
+    // layout
+    nextEffect = firstEffect;
+    do {
+      if (__DEV__) {
+      } else {
+        try {
+          commitLayoutEffects(root, lanes);
+        } catch (error) {
+          invariant(nextEffect !== null, 'Should be working on an effect.');
+          captureCommitPhaseError(nextEffect, error);
+          nextEffect = nextEffect.nextEffect;
+        }
+      }
+    } while (nextEffect !== null);
+
+    nextEffect = null;
+
+    // Tell Scheduler to yield at the end of the frame, so the browser has an
+    // opportunity to paint.
+    requestPaint();
+
+    if (enableSchedulerTracing) {
+      popInteractions(((prevInteractions: any): Set<Interaction>));
+    }
+    executionContext = prevExecutionContext;
+
+    if (decoupleUpdatePriorityFromScheduler && previousLanePriority != null) {
+      // Reset the priority to the previous non-sync value.
+      setCurrentUpdateLanePriority(previousLanePriority);
+    }
+  } else {
+  }
+
+  const rootDidHavePassiveEffects = rootDoesHavePassiveEffects;
+
+  if (rootDoesHavePassiveEffects) {
+  } else {
+    // 设置effect链表中各个对象的nextEffect指针为null. 辅助垃圾回收
+    nextEffect = firstEffect;
+    while (nextEffect !== null) {
+      const nextNextEffect = nextEffect.nextEffect;
+      nextEffect.nextEffect = null;
+      if (nextEffect.flags & Deletion) {
+        detachFiberAfterEffects(nextEffect);
+      }
+      nextEffect = nextNextEffect;
+    }
+  }
+
+  // Read this again, since an effect might have updated it
+  remainingLanes = root.pendingLanes;
+
+  // Check if there's remaining work on this root
+  if (remainingLanes !== NoLanes) {
+  } else {
+    legacyErrorBoundariesThatAlreadyFailed = null;
+  }
+
+  if (enableSchedulerTracing) {
+    if (!rootDidHavePassiveEffects) {
+      finishPendingInteractions(root, lanes);
+    }
+  }
+
+  if (remainingLanes === SyncLane) {
+  } else {
+    nestedUpdateCount = 0;
+  }
+
+  // onCommitRootDevTools(finishedWork.stateNode, renderPriorityLevel);
+
+  ensureRootIsScheduled(root, now());
+
+  if ((executionContext & LegacyUnbatchedContext) !== NoContext) {
+
+    if (enableSchedulingProfiler) {
+      markCommitStopped();
+    }
+
+    return null;
+  }
+}
+```
