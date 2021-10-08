@@ -1014,6 +1014,10 @@ function App() {
 ```js
 function commitRoot(root) {
   const renderPriorityLevel = getCurrentPriorityLevel();
+
+  // Scheduler调度器提供的方法
+  // 参数一为调度的优先级
+  // 参数二为调度的回调函数
   runWithPriority(
     ImmediateSchedulerPriority,
     commitRootImpl.bind(null, root, renderPriorityLevel),
@@ -1025,8 +1029,18 @@ function commitRoot(root) {
 ```js
 function commitRootImpl(root, renderPriorityLevel) {
 
-  // 设置局部变量
+  // passive Effects对于function component代表着useEffect
+  do {
+    // 触发useEffect回调
+    // 由于这些任务可能触发新的渲染，所以这里要一直遍历直到没有任务
+    flushPassiveEffects();
+  } while (rootWithPendingPassiveEffects !== null);
+
+  // root指 fiberRootNode
+  // root.finishedWork指当前应用的rootFiber
   const finishedWork = root.finishedWork;
+
+  // 与优先级相关
   const lanes = root.finishedLanes;
 
   if (enableSchedulingProfiler) {
@@ -1037,12 +1051,30 @@ function commitRootImpl(root, renderPriorityLevel) {
   root.finishedWork = null;
   root.finishedLanes = NoLanes;
 
+  // 重置Scheduler绑定的回调函数
   root.callbackNode = null;
 
   let remainingLanes = mergeLanes(finishedWork.lanes, finishedWork.childLanes);
+
+  // 重置优先级相关变量
   markRootFinished(root, remainingLanes);
 
-  // Get the list of effects.
+  // 清除已完成的discrete updates
+  // discrete updates是指离散的更新
+  // 离散的更新是由离散的事件产生的用户触发的事件，比如点击事件
+  if (rootsWithPendingDiscreteUpdates !== null) {
+    if (
+      !hasDiscreteLanes(remainingLanes) &&
+      rootsWithPendingDiscreteUpdates.has(root)
+    ) {
+      rootsWithPendingDiscreteUpdates.delete(root);
+    }
+  }
+
+  // 将effectList赋值给firstEffect
+  // 由于每个fiber的effectList只包含他的子孙节点，根节点如果有effectTag则不会被包含进来
+  // 这里将有effectTag的根节点插入到effectList尾部
+  // 这样才能保证有effect的fiber都在effectList中
   let firstEffect;
   if (finishedWork.flags > PerformedWork) {
     if (finishedWork.lastEffect !== null) {
@@ -1051,7 +1083,6 @@ function commitRootImpl(root, renderPriorityLevel) {
     } else {
     }
   } else {
-    // There is no effect on the root.
     firstEffect = finishedWork.firstEffect;
   }
 
@@ -1066,13 +1097,12 @@ function commitRootImpl(root, renderPriorityLevel) {
     executionContext |= CommitContext;
     const prevInteractions = pushInteractions(root);
 
-    // Reset this to null before calling lifecycles
     ReactCurrentOwner.current = null;
 
     focusedInstanceHandle = prepareForCommit(root.containerInfo);
     shouldFireAfterActiveInstanceBlur = false;
 
-    // before mutaion.  调用getSnapshotBeforeUpdate
+    // commit before mutation阶段
     nextEffect = firstEffect;
     do {
       if (__DEV__) {
@@ -1080,21 +1110,19 @@ function commitRootImpl(root, renderPriorityLevel) {
         try {
           commitBeforeMutationEffects();
         } catch (error) {
-          invariant(nextEffect !== null, 'Should be working on an effect.');
           captureCommitPhaseError(nextEffect, error);
           nextEffect = nextEffect.nextEffect;
         }
       }
     } while (nextEffect !== null);
 
-    // We no longer need to track the active instance fiber
     focusedInstanceHandle = null;
 
     if (enableProfilerTimer) {
       recordCommitTime();
     }
 
-    // mutation. 调用渲染器, 更新到最新的Fiber状态
+    // mutation阶段
     nextEffect = firstEffect;
     do {
       if (__DEV__) {
@@ -1102,7 +1130,6 @@ function commitRootImpl(root, renderPriorityLevel) {
         try {
           commitMutationEffects(root, renderPriorityLevel);
         } catch (error) {
-          invariant(nextEffect !== null, 'Should be working on an effect.');
           captureCommitPhaseError(nextEffect, error);
           nextEffect = nextEffect.nextEffect;
         }
@@ -1119,7 +1146,7 @@ function commitRootImpl(root, renderPriorityLevel) {
     // 在layout阶段, current指向的是RootFiber.alternate.
     root.current = finishedWork;
 
-    // layout
+    // layout阶段
     nextEffect = firstEffect;
     do {
       if (__DEV__) {
@@ -1127,7 +1154,6 @@ function commitRootImpl(root, renderPriorityLevel) {
         try {
           commitLayoutEffects(root, lanes);
         } catch (error) {
-          invariant(nextEffect !== null, 'Should be working on an effect.');
           captureCommitPhaseError(nextEffect, error);
           nextEffect = nextEffect.nextEffect;
         }
@@ -1154,6 +1180,7 @@ function commitRootImpl(root, renderPriorityLevel) {
 
   const rootDidHavePassiveEffects = rootDoesHavePassiveEffects;
 
+  // useEffect相关
   if (rootDoesHavePassiveEffects) {
   } else {
     // 设置effect链表中各个对象的nextEffect指针为null. 辅助垃圾回收
@@ -1168,10 +1195,9 @@ function commitRootImpl(root, renderPriorityLevel) {
     }
   }
 
-  // Read this again, since an effect might have updated it
   remainingLanes = root.pendingLanes;
 
-  // Check if there's remaining work on this root
+  // 检测无限循环的同步任务
   if (remainingLanes !== NoLanes) {
   } else {
     legacyErrorBoundariesThatAlreadyFailed = null;
@@ -1190,6 +1216,7 @@ function commitRootImpl(root, renderPriorityLevel) {
 
   // onCommitRootDevTools(finishedWork.stateNode, renderPriorityLevel);
 
+  // 在离开commitRoot函数前调用，触发一次新的调度，确保任何附加的任务被调度
   ensureRootIsScheduled(root, now());
 
   if ((executionContext & LegacyUnbatchedContext) !== NoContext) {
@@ -1200,5 +1227,13 @@ function commitRootImpl(root, renderPriorityLevel) {
 
     return null;
   }
+
+  // 执行同步任务，这样同步任务不需要等到下次事件循环再执行
+  // 比如在 componentDidMount 中执行 setState 创建的更新会在这里被同步执行
+  // useLayoutEffect  
+  // 我们目前项目中使用的useEffect版本还未用到异步更新，所以都会执行该方法，可以采用React的concurrent模式，尝试新功能。。。
+  flushSyncCallbackQueue();
+
+  return  null;
 }
 ```
