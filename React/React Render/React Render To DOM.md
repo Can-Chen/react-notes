@@ -1301,65 +1301,56 @@ function commitMutationEffects(
   root: FiberRoot,
   renderPriorityLevel: ReactPriorityLevel,
 ) {
-  // TODO: Should probably move the bulk of this function to commitWork.
+  // 判断Effect Tag Fiber节点的链表是否为空
   while (nextEffect !== null) {
     setCurrentDebugFiberInDEV(nextEffect);
 
     const flags = nextEffect.flags;
 
+    // 是否需要充值文本节点
     if (flags & ContentReset) {
       commitResetTextContent(nextEffect);
     }
 
+    // ref相关
     if (flags & Ref) {
       const current = nextEffect.alternate;
       if (current !== null) {
         commitDetachRef(current);
       }
       if (enableScopeAPI) {
-        // TODO: This is a temporary solution that allowed us to transition away
-        // from React Flare on www.
         if (nextEffect.tag === ScopeComponent) {
           commitAttachRef(nextEffect);
         }
       }
     }
 
-    // The following switch statement is only concerned about placement,
-    // updates, and deletions. To avoid needing to add a case for every possible
-    // bitmap value, we remove the secondary effects from the effect tag and
-    // switch on that value.
+    // 是否存在对应的工作 插入DOM、更新属性、删除DOM节点、SSR相关
     const primaryFlags = flags & (Placement | Update | Deletion | Hydrating);
     switch (primaryFlags) {
       case Placement: {
+        // 插入dom节点
         commitPlacement(nextEffect);
-        // Clear the "placement" from effect tag so that we know that this is
-        // inserted, before any life-cycles like componentDidMount gets called.
-        // TODO: findDOMNode doesn't rely on this any more but isMounted does
-        // and isMounted is deprecated anyway so we should be able to kill this.
+        // 为当前fiber节点删除placement这个Effect Tag
         nextEffect.flags &= ~Placement;
         break;
       }
       case PlacementAndUpdate: {
-        // Placement
         commitPlacement(nextEffect);
-        // Clear the "placement" from effect tag so that we know that this is
-        // inserted, before any life-cycles like componentDidMount gets called.
         nextEffect.flags &= ~Placement;
 
-        // Update
+        // 更新先不管
         const current = nextEffect.alternate;
         commitWork(current, nextEffect);
         break;
       }
       case Hydrating: {
+        // ssr
         nextEffect.flags &= ~Hydrating;
         break;
       }
       case HydratingAndUpdate: {
         nextEffect.flags &= ~Hydrating;
-
-        // Update
         const current = nextEffect.alternate;
         commitWork(current, nextEffect);
         break;
@@ -1370,6 +1361,7 @@ function commitMutationEffects(
         break;
       }
       case Deletion: {
+        // 删除dom节点
         commitDeletion(root, nextEffect, renderPriorityLevel);
         break;
       }
@@ -1385,11 +1377,6 @@ layout阶段
 
 ```js
 function commitLayoutEffects(root: FiberRoot, committedLanes: Lanes) {
-  if (__DEV__) {
-    if (enableDebugTracing) {
-      logLayoutEffectsStarted(committedLanes);
-    }
-  }
 
   if (enableSchedulingProfiler) {
     markLayoutEffectsStarted(committedLanes);
@@ -1420,12 +1407,6 @@ function commitLayoutEffects(root: FiberRoot, committedLanes: Lanes) {
 
     resetCurrentDebugFiberInDEV();
     nextEffect = nextEffect.nextEffect;
-  }
-
-  if (__DEV__) {
-    if (enableDebugTracing) {
-      logLayoutEffectsStopped();
-    }
   }
 
   if (enableSchedulingProfiler) {
