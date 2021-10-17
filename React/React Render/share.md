@@ -1,7 +1,7 @@
 
 >基于React@17.0.2
 
-## React如何把编写的JSX文件转换成DOM？
+## React首次渲染执行流程
 
 ### [渲染器](https://zh-hans.reactjs.org/docs/codebase-overview.html#renderers)
 ---
@@ -133,7 +133,7 @@ const ReactElement = function(type, key, ref, self, source, owner, props) {
 > 2. Red在第一次执行React.render()和更新都会执行。
 > 3. Blue代表着开始把需要挂载的内容渲染到页面上。
 
-render方法。省略部分代码<br><br>
+render方法。省略部分代码<br>
 
 很简洁，主要就是调用`legacyRenderSubtreeIntoContainer`方法
 ```js
@@ -153,7 +153,7 @@ export function render(
 };
 ```
 
-legacyRenderSubtreeIntoContainer方法。省略部分代码<br><br>
+legacyRenderSubtreeIntoContainer方法。省略部分代码<br>
 
 在`legacyRenderSubtreeIntoContainer`方法中就会对这次执行进行判断。首次进入到该方法中时，因为在react的容器container中还未初始化react应用的环境，所以`container._reactRootContainer`返回的root字段为undefined，需要对root进行初始化，创建ReactDOMRoot对象，初始化react应用环境。从以下代码可以看出首次加载和更新都有调用`updateContainer`方法，该方法是在首次加载时不需要进行批量更新。
 
@@ -1102,3 +1102,247 @@ function App() {
 - completeWork：`workInProgress`指向根fiber节点。`firstEffect`和`lastEffect`属性分别指向`effects`队列的开始（根fiber节点）和末尾（根fiber节点）
 
 ![beginWork - completeWork](../assets/img.Render/%20beginWork%20-%20completeWork.jpg)
+
+### commit阶段
+
+```js
+function commitRoot(root) {
+  const renderPriorityLevel = getCurrentPriorityLevel();
+
+  // Scheduler调度器提供的方法
+  // 参数一为调度的优先级
+  // 参数二为调度的回调函数
+  runWithPriority(
+    ImmediateSchedulerPriority,
+    commitRootImpl.bind(null, root, renderPriorityLevel),
+  );
+  return null;
+}
+```
+* commit阶段开始于commitRoot这个方法。在这个方法中会执行runWithPriority()，该方法是由Scheduler，也就是调度器提供的这个方法。该方法接收两个参数，第一个参数是一个调度的优先级，第二个参数是一个调度的回调函数。在这个回调函数中触发的任何调度都会以第一个参数作为优先级。所以commitRoot实际要执行的方法是commitRootImpl。
+
+```js
+function commitRootImpl(root, renderPriorityLevel) {
+
+  // 将effectList赋值给firstEffect
+  // 由于每个fiber的effectList只包含他的子孙节点，根节点如果有effectTag则不会被包含进来
+  // 这里将有effectTag的根节点插入到effectList尾部
+  // 这样才能保证有effect的fiber都在effectList中
+  let firstEffect;
+  if (finishedWork.flags > PerformedWork) {
+    if (finishedWork.lastEffect !== null) {
+      finishedWork.lastEffect.nextEffect = finishedWork;
+      firstEffect = finishedWork.firstEffect;
+    } else {
+    }
+  } else {
+    firstEffect = finishedWork.firstEffect;
+  }
+
+  if (firstEffect !== null) {
+
+    // commit before mutation阶段
+    nextEffect = firstEffect;
+    do {
+      if (__DEV__) {
+      } else {
+        try {
+          commitBeforeMutationEffects();
+        } catch (error) {
+          captureCommitPhaseError(nextEffect, error);
+          nextEffect = nextEffect.nextEffect;
+        }
+      }
+    } while (nextEffect !== null);
+
+    focusedInstanceHandle = null;
+
+    if (enableProfilerTimer) {
+      recordCommitTime();
+    }
+
+    // mutation阶段
+    nextEffect = firstEffect;
+    do {
+      if (__DEV__) {
+      } else {
+        try {
+          commitMutationEffects(root, renderPriorityLevel);
+        } catch (error) {
+          captureCommitPhaseError(nextEffect, error);
+          nextEffect = nextEffect.nextEffect;
+        }
+      }
+    } while (nextEffect !== null);
+
+    if (shouldFireAfterActiveInstanceBlur) {
+      afterActiveInstanceBlur();
+    }
+    resetAfterCommit(root.containerInfo);
+
+    // FiberRoot的current指向finishedWork
+    // 在layout阶段之前, current指向的是HostRootFiber.
+    // 在layout阶段, current指向的是RootFiber.alternate.
+    root.current = finishedWork;
+
+    // layout阶段
+    nextEffect = firstEffect;
+    do {
+      if (__DEV__) {
+      } else {
+        try {
+          commitLayoutEffects(root, lanes);
+        } catch (error) {
+          captureCommitPhaseError(nextEffect, error);
+          nextEffect = nextEffect.nextEffect;
+        }
+      }
+    } while (nextEffect !== null);
+
+    nextEffect = null;
+  } else {
+  }
+
+
+  // 检测无限循环的同步任务
+  if (remainingLanes === SyncLane) {
+    if (root === rootWithNestedUpdates) {
+      nestedUpdateCount++;
+    } else {
+      nestedUpdateCount = 0;
+      rootWithNestedUpdates = root;
+    }
+  } else {
+    nestedUpdateCount = 0;
+  }
+
+  // 在离开commitRoot函数前调用，触发一次新的调度，确保任何附加的任务被调度
+  ensureRootIsScheduled(root, now());
+
+  // 执行同步任务，这样同步任务不需要等到下次事件循环再执行
+  // 比如在 componentDidMount 中执行 setState 创建的更新会在这里被同步执行
+  // useLayoutEffect  
+  // 我们目前项目中使用的useEffect版本还未用到异步更新，所以都会执行该方法，可以采用React的concurrent模式，尝试新功能。。。
+  flushSyncCallbackQueue();
+
+  return  null;
+}
+```
+commitRootIml方法主要执行力before mutation、mutation和layout阶段
+
+before muatation阶段：
+* 遍历effectlist
+* 处理DOM节点渲染/删除后的 autoFocus、blur逻辑
+* 调用getSnapshotBeforeUpdate生命周期钩子
+* 调度useEffect
+
+mutation阶段：
+* 遍历effectlist
+* 是否需要重置文本节点、更新ref
+* 根据不同的effectTag执行不同的工作。Placement -> 插入DOM、Update -> 更新属性、Deletion -> 删除DOM节点、 Hydrating -> SSR相关
+
+layout阶段：
+* commitLayoutEffectOnFiber（调用生命周期钩子和hook相关操作）
+* commitAttachRef（赋值 ref）
+
+
+学习到了什么？
+---
+* 位运算
+```js
+ // 没有任何操作
+const NoLane = 0b000000;
+// 更新操作
+const Update = 0b000001;
+// 插入操作
+const Insert = 0b000010;
+
+let current = 0b000000;
+
+// 当前节点同时需要更新与插入操作 ？
+current = current | Update | Insert
+
+console.log((current & Update) !== NoLane);
+console.log((current & Insert) !== NoLane);
+```
+
+* <strong>为什么要设计React16之后改成Fiber架构</strong>
+  <br>
+  为了实现异步可中断渲染。
+
+* <strong>异步可中断渲染</strong>
+  <br>
+  什么是异步可中断渲染？为什么需要它？<br><br>
+  react设计理念为快速响应，而制约快速响应有两种场景：
+  <br>1、计算能力（CPU瓶颈） 
+  <br>2、网络请求（IO瓶颈）。
+  <br>网络延迟是我们前端开发暂时没办法解决的。而CPU的瓶颈，当项目变得庞大、组件数量众多，就容易达到CPU的瓶颈。主流浏览器刷新频率为60Hz，即1000ms/60Hz = 16.6ms 浏览器刷新一次。JS是可以操作DOM的，GUI渲染线程与js线程是互斥的。所以js脚本执行和浏览器布局、绘制不能同时执行。在这个过程中需要 JS脚本执行 -->样式布局 ---> 样式绘制。当js执行过程过长，超过一帧时，这次刷新就没有时间执行样式布局和样式绘制了，就会造成掉帧，给使用者一种卡顿的感觉。在浏览器每一帧的时间中，预留一些时间给JS线程，React利用这部分时间更新组件（[在源码中，预留的初始时间是5ms](https://github.com/facebook/react/blob/1fb18e22ae66fdb1dc127347e169e73948778e5a/packages/scheduler/src/forks/SchedulerHostConfig.default.js#L119)）。当预留的时间不够用时，React将线程控制权交还给浏览器使其有时间渲染UI，React则等待下一帧时间继续被中断的工作。
+  <br><br>
+  [在react中](https://github1s.com/facebook/react/blob/17.0.2/packages/react-reconciler/src/ReactFiberWorkLoop.old.js)，在进行每一次工作循环时会检查是否存在空余时间.
+
+```js
+  /** @noinline */
+function workLoopConcurrent() {
+  while (workInProgress !== null && !shouldYield()) {
+    performUnitOfWork(workInProgress);
+  }
+}
+ ```
+但是在上述的legacy模式中，默认执行的是`workLoopSync`函数，是没有开启这个功能的，在concurrent模式中是开启的。
+  
+* <strong>JSX与Fiber节点之间的关系</strong>
+  <br>
+  JSX是一种描述当前组件内容的数据结构.，不包含组件在更新中的优先级、组件的state、组件需要被调用的tag。
+
+* <strong>如何debug源码</strong>
+  ```shell
+  <!-- 个人建议寻找React16.8版本以后的包 -->
+
+  # 拉取代码
+  git clone https://github.com/facebook/react.git
+
+  # 切入到react源码所在文件夹
+  cd react
+
+  # 安装依赖
+  yarn
+
+  # 执行打包命令
+  yarn build react/index,react/jsx,react-dom/index,scheduler --type=NODE
+
+  # 声明react指向
+  cd build/node_modules/react
+  yarn link
+
+  # 声明react-dom指向
+  cd build/node_modules/react-dom
+  yarn link
+
+  # 将项目内的react react-dom指向之前声明的包
+  yarn link react react-dom
+  ```
+* <strong>react为什么不采用Generator？</strong>
+  <br><br>
+  看React这个[issuse](https://github.com/facebook/react/issues/7942#issuecomment-254987818)
+
+  全文翻译：
+  
+  类似async，Generator也是传染性的，使用了Generator则上下文的其他函数也需要作出改变。这样心智负担比较重。
+
+  Generator执行的中间状态是上下文关联的。
+
+  ```jsx
+  function* doWork(A, B, C) {
+    var x = doExpensiveWorkA(A);
+    yield;
+    var y = x + doExpensiveWorkB(B);
+    yield;
+    var z = y + doExpensiveWorkC(C);
+    return z;
+  }
+  ```
+  每当浏览器有空闲时间都会依次执行其中一个doExpensiveWork，当时间用尽则会中断，当再次恢复时会从中断位置继续执行。只考虑“单一优先级任务的中断与继续”情况下Generator可以很好的实现异步可中断更新。
+
+  但是当我们考虑“高优先级任务插队”的情况，如果此时已经完成doExpensiveWorkA与doExpensiveWorkB计算出x与y。此时B组件接收到一个高优更新，由于Generator执行的中间状态是上下文关联的，所以计算y时无法复用之前已经计算出的x，需要重新计算。如果通过全局变量保存之前执行的中间状态，又会引入新的复杂度。
+
+  基于这些原因，React没有采用Generator实现协调器。
