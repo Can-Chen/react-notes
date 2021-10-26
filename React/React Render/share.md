@@ -43,7 +43,7 @@ ReactDOM.render做了什么工作？
 > ReactDOM.render() 会控制你传入容器节点里的内容。当首次调用时，容器节点里的所有 DOM 元素都会被替换，后续的调用则会使用 React 的 DOM 差分算法（DOM diffing algorithm）进行高效的更新。<br><br>
 > 不会修改容器节点（只会修改容器的子节点）。可以在不覆盖现有子节点的情况下，将组件插入已有的 DOM 节点中。<br><br>
 
-render方法接收三个参数分别为所需要渲染的节点信息（element）、容器（一般为document.getElement("id")）、渲染成功或者更新后的回调（callback）。<br><br>
+render方法接收三个参数分别为所需要渲染的节点信息（element）、容器（一般为document.getElementId("root")）、渲染成功或者更新后的回调（callback）。<br><br>
 
 第一个参数为渲染所需的节点信息element。而在日常中编写的代码都是采用JSX语法的形式进行编码的，那JSX是什么东西呢？<br><br>
 
